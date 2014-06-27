@@ -1,6 +1,7 @@
-package nodeprep;
+// These tables copied directly from the RFC:
+// http://www.ietf.org/rfc/rfc3920.txt
 
-// Raw strings that are turned into maps on the first execution of Nodeprep()
+package nodeprep;
 
 var unassignedCodepointsStr string = `
    ----- Start Table A.1 -----

@@ -1,12 +1,14 @@
 // Go implementation of Nodeprep, a special case of Stringprep
+// Nodeprep RFC: http://www.ietf.org/rfc/rfc3920.txt
+//
 // Could easily be generalized to handle any Stringprep
 // The public interface is a single function:
 //
 // func Nodeprep(input string) string
 //
-// By Henrik Rydgård
+// By Henrik Rydgård 2014
 //
-// Licensed to the public domain (do whatever you want with this)
+// BSD Licensed
 
 package nodeprep
 
@@ -17,9 +19,8 @@ import (
   "code.google.com/p/go.text/unicode/norm"
 )
 
-// Cached lookup tables. Initialized from the strings below that are directly copied from
-// the RFC during the first time Nodeprep is called. In the future these may be moved to
-// a data file or something.
+// Cached lookup tables. Initialized from the strings in nodeprep_tables.go during the first
+// time Nodeprep is called. We may want to look into more compact storage...
 
 var mapB1 map[rune]string
 var mapB2 map[rune]string
@@ -31,7 +32,7 @@ var unassigned map[rune]bool
 // TODO: Should probably turn into a bitmap or array.
 var prohibitMapC1 map[rune]bool
 
-// BIDI stuff
+// BIDI stuff. Not used yet.
 var charsRandAL map[rune]bool
 var charsL map[rune]bool
 
@@ -130,6 +131,58 @@ func prohibitRunes(input string, killMap map[rune]bool) string {
   return output
 }
 
+func checkBidiRules(input string) bool {
+  if len(input) == 0 {
+    return true
+  }
+
+  // Section 6 of RFC 3454
+  // 1) prohibitions. Already implemented by the prohibit checks
+  // 2) "If a string contains any RandALCat character, the string MUST NOT
+  //    contain any LCat character"
+  // 3) "If a string contains any RandALCat character, a RandALCat
+  //    character MUST be the first character of the string, and a
+  //    RandALCat character MUST be the last character of the string."
+
+  // Okay, so let's begin with rule 2.
+  containsRandAL := false
+  containsL := false
+  var firstRune, lastRune rune
+  firstSet := false
+  for _, runeValue := range(input) {
+    if !firstSet {
+      firstRune = runeValue
+      firstSet = true
+    }
+    _, present := charsRandAL[runeValue] 
+    if present {
+      containsRandAL = true
+    }
+    _, present = charsL[runeValue]
+    if present {
+      containsL = true
+    }
+    lastRune = runeValue
+  }
+
+  if containsRandAL && containsL {
+    return false
+  }
+
+  // And Rule 3.
+  if containsRandAL {
+    _, first := charsRandAL[firstRune]
+    _, last := charsRandAL[lastRune]
+    if first && last {
+      return true
+    } else {
+      return false
+    }
+  }
+
+  return true
+}
+
 func existAnyRunesInSet(input string, bannedMap map[rune]bool) bool {
   for _, runeValue := range(input) {
     _, present := bannedMap[runeValue]
@@ -179,8 +232,10 @@ func Nodeprep(input string) (string, error) {
     fmt.Println("prohibited", prohibited)
   }
 
-  // Step 4: BIDI checks (TODO)
-  
+  // Step 4: BIDI checks
+  if (!checkBidiRules(prohibited)) {
+    return "", fmt.Errorf("String does not comply with BIDI rules")
+  }
 
   // Step 5: Check for unassigned characters
   if existAnyRunesInSet(input, unassigned) {
