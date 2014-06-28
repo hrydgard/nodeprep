@@ -66,7 +66,7 @@ func pythonNodeprep(s []string) (result []string, err error) {
 		return
 	}
 	result = make([]string, len(s))
-	for i, prepped := range strings.Split(strings.TrimSpace(string(combined)), "\n") {
+	for i, prepped := range strings.Split(string(combined), "\n") {
 		if prepped != "ILLEGAL" {
 			result[i] = prepped
 		}
@@ -88,10 +88,11 @@ func randRune() (result rune) {
 }
 
 func Test_RandomStrings(t *testing.T) {
-	n := 1000
+	n := 10000
+	length := 10
 	randomStrings := make([]string, n)
 	for i := 0; i < n; i++ {
-		l := 1 + rand.Int()%100
+		l := 1 + rand.Int()%length
 		buf := make([]rune, l)
 		for j := 0; j < l; j++ {
 			buf[j] = randRune()
@@ -102,17 +103,27 @@ func Test_RandomStrings(t *testing.T) {
 		randomStrings[i] = string(buf)
 		fmt.Printf("\rGenerated %v random and valid UTF8 strings ", i)
 	}
-	fmt.Printf("\nFound %v/%v valid code points (%v)\n", hits, hits+misses, float64(hits)/float64(hits+misses))
+	fmt.Printf("\nFound %v/%v valid code points (on average %v of the possible runes are valid code points)\n", hits, hits+misses, float64(hits)/float64(hits+misses))
 	prep1, err := pythonNodeprep(randomStrings)
 	if err != nil {
 		t.Fatalf("%v", err)
+	}
+	for i := 0; i < n; i++ {
+		if prep1[i] != "" {
+			fmt.Printf("%#v => %#v\n", randomStrings[i], prep1[i])
+		}
 	}
 	prep2, err := pythonNodeprep(prep1)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
+	for i := 0; i < n; i++ {
+		if prep1[i] != "" {
+			fmt.Printf("%#v => %#v\n", prep1[i], prep2[i])
+		}
+	}
 	errs := 0
-	correct := map[string]string{}
+	correct := 0
 	bad, err := os.Create("badpreps")
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -126,12 +137,6 @@ func Test_RandomStrings(t *testing.T) {
 				fmt.Fprintln(bad, randomStrings[i])
 				errs++
 			}
-		} else {
-			if prep1[i] != "" {
-				t.Errorf("Python prepping %#v produced %#v, but was unable to Go prep it: %v", randomStrings[i], prep1[i], err)
-				fmt.Fprintln(bad, randomStrings[i])
-				errs++
-			}
 			goPrep2, err := Nodeprep(goPrep1)
 			if err == nil {
 				if prep2[i] != goPrep2 {
@@ -139,7 +144,7 @@ func Test_RandomStrings(t *testing.T) {
 					fmt.Fprintln(bad, randomStrings[i])
 					errs++
 				} else {
-					correct[randomStrings[i]] = goPrep2
+					correct++
 				}
 			} else {
 				if prep2[i] != "" {
@@ -148,12 +153,15 @@ func Test_RandomStrings(t *testing.T) {
 					errs++
 				}
 			}
+		} else {
+			if prep1[i] != "" {
+				t.Errorf("Python prepping %#v produced %#v, but was unable to Go prep it: %v", randomStrings[i], prep1[i], err)
+				fmt.Fprintln(bad, randomStrings[i])
+				errs++
+			}
 		}
 	}
 	if errs > 0 {
-		t.Errorf("%v/%v strings badly encoded", errs, n)
-		for src, dst := range correct {
-			t.Errorf("Correctly encoded %#v => %#v", src, dst)
-		}
+		t.Errorf("%v/%v strings badly encoded (but %v non zero strings correctly encoded :)", errs, n, correct)
 	}
 }
