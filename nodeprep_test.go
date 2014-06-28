@@ -108,19 +108,9 @@ func Test_RandomStrings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	for i := 0; i < n; i++ {
-		if prep1[i] != "" {
-			fmt.Printf("%#v => %#v\n", randomStrings[i], prep1[i])
-		}
-	}
 	prep2, err := pythonNodeprep(prep1)
 	if err != nil {
 		t.Fatalf("%v", err)
-	}
-	for i := 0; i < n; i++ {
-		if prep1[i] != "" {
-			fmt.Printf("%#v => %#v\n", prep1[i], prep2[i])
-		}
 	}
 	errs := 0
 	correct := 0
