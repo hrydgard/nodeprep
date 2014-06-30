@@ -58,7 +58,7 @@ func Test_Nodeprep(t *testing.T) {
 	testString(t, "1&2'3/4:5<6>7@8", "12345678")
 }
 
-func pythonNodeprep(s []string) (result []string, err error) {
+func pythonNodeprep(s []string) (result []string, legal []bool, err error) {
 	cmd := exec.Command("python", filepath.Join("python", "convert.py"))
 	cmd.Stdin = bytes.NewBufferString(strings.Join(s, "\n"))
 	combined, err := cmd.CombinedOutput()
@@ -66,8 +66,10 @@ func pythonNodeprep(s []string) (result []string, err error) {
 		return
 	}
 	result = make([]string, len(s))
+	legal = make([]bool, len(s))
 	for i, prepped := range strings.Split(string(combined), "\n") {
 		if prepped != "ILLEGAL" {
+			legal[i] = true
 			result[i] = prepped
 		}
 	}
@@ -78,37 +80,30 @@ var hits = 0
 var misses = 0
 
 func randRune() (result rune) {
-	result = rune(int64(rand.Int())<<32 + int64(rand.Int()))
+	wide := rand.Int()%8 == 0
+	if wide {
+		result = rune(rand.Uint32())<<32 + rune(rand.Uint32())
+	} else {
+		result = rune(rand.Uint32())
+	}
 	for !utf8.ValidRune(result) {
 		misses++
-		result = rune(int64(rand.Int())<<32 + int64(rand.Int()))
+		if wide {
+			result = rune(rand.Uint32())<<32 + rune(rand.Uint32())
+		} else {
+			result = rune(rand.Uint32())
+		}
 	}
 	hits++
 	return
 }
 
-func Test_RandomStrings(t *testing.T) {
-	n := 10000
-	length := 10
-	randomStrings := make([]string, n)
-	for i := 0; i < n; i++ {
-		l := 1 + rand.Int()%length
-		buf := make([]rune, l)
-		for j := 0; j < l; j++ {
-			buf[j] = randRune()
-		}
-		if !utf8.ValidString(string(buf)) {
-			t.Fatalf("Unable to create valid UTF8 string: %#v", string(buf))
-		}
-		randomStrings[i] = string(buf)
-		fmt.Printf("\rGenerated %v random and valid UTF8 strings ", i)
-	}
-	fmt.Printf("\nFound %v/%v valid code points (on average %v of the possible runes are valid code points)\n", hits, hits+misses, float64(hits)/float64(hits+misses))
-	prep1, err := pythonNodeprep(randomStrings)
+func testStrings(t *testing.T, strings []string) {
+	prep1, legal1, err := pythonNodeprep(strings)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	prep2, err := pythonNodeprep(prep1)
+	prep2, legal2, err := pythonNodeprep(prep1)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -119,39 +114,45 @@ func Test_RandomStrings(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	defer bad.Close()
-	for i, s := range randomStrings {
-		goPrep1, err := Nodeprep(s)
+	for i, s := range strings {
+		goPrep, err := Nodeprep(s)
 		if err == nil {
-			if prep1[i] != goPrep1 {
-				t.Errorf("Python prepping %#v produced %#v, but Go prepping it produced %#v", randomStrings[i], prep1[i], goPrep1)
-				fmt.Fprintln(bad, randomStrings[i])
+			if !legal1[i] || prep1[i] != prep2[i] {
+				t.Errorf("Python said %#v was illegal to prep (it produced %#v, %v and %#v, %v), but Go prepping it produced %#v", strings[i], prep1[i], legal1[i], prep2[i], legal2[i], goPrep)
+				fmt.Fprintln(bad, strings[i])
 				errs++
-			}
-			goPrep2, err := Nodeprep(goPrep1)
-			if err == nil {
-				if prep2[i] != goPrep2 {
-					t.Errorf("Python prepping %#v twice produced %#v, but Go prepping it twice produced %#v", randomStrings[i], prep2[i], goPrep2)
-					fmt.Fprintln(bad, randomStrings[i])
-					errs++
-				} else {
-					correct++
-				}
+			} else if prep1[i] != goPrep {
+				t.Errorf("Python prepping %#v produced %#v, but Go prepping it produced %#v", strings[i], prep1[i], goPrep)
+				fmt.Fprintln(bad, strings[i])
+				errs++
 			} else {
-				if prep2[i] != "" {
-					t.Errorf("Python prepping %#v twice produced %#v, but was unable to Go prep it twice: %v", randomStrings[i], prep2[i], err)
-					fmt.Fprintln(bad, randomStrings[i])
-					errs++
-				}
+				correct++
 			}
 		} else {
-			if prep1[i] != "" {
-				t.Errorf("Python prepping %#v produced %#v, but was unable to Go prep it: %v", randomStrings[i], prep1[i], err)
-				fmt.Fprintln(bad, randomStrings[i])
+			if legal1[i] && prep1[i] == prep2[i] {
+				t.Errorf("Python prepping %#v produced %#v, but was unable to Go prep it: %v", strings[i], prep1[i], err)
+				fmt.Fprintln(bad, strings[i])
 				errs++
 			}
 		}
 	}
 	if errs > 0 {
-		t.Errorf("%v/%v strings badly encoded (but %v non zero strings correctly encoded :)", errs, n, correct)
+		t.Errorf("%v/%v strings badly encoded (but %v non zero strings correctly encoded :)", errs, len(strings), correct)
 	}
+}
+
+func Test_RandomCodePoints(t *testing.T) {
+	n := 100000
+	randomStrings := make([]string, n)
+	for i := 0; i < n; i++ {
+		buf := make([]rune, 1)
+		buf[0] = randRune()
+		if !utf8.ValidString(string(buf)) {
+			t.Fatalf("Unable to create valid UTF8 string: %#v", string(buf))
+		}
+		randomStrings[i] = string(buf)
+		fmt.Printf("\rGenerated %v random and valid UTF8 code points ", i)
+	}
+	fmt.Printf("\nFound %v/%v valid code points (on average %v of the possible runes are valid code points)\n", hits, hits+misses, float64(hits)/float64(hits+misses))
+	testStrings(t, randomStrings)
 }
