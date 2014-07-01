@@ -80,9 +80,8 @@ const (
 	maxRune      = 0x0010FFFF
 	surrogateMin = 0xD800
 	surrogateMax = 0xDFFF
+	practicalMax = maxRune - (surrogateMax - surrogateMin)
 )
-
-var practicalMax = maxRune - (surrogateMax - surrogateMin)
 
 func randRune() (result rune) {
 	result = rune(rand.Intn(practicalMax))
