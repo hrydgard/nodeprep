@@ -76,25 +76,19 @@ func pythonNodeprep(s []string) (result []string, legal []bool, err error) {
 	return
 }
 
-var hits = 0
-var misses = 0
+const (
+	maxRune      = 0x0010FFFF
+	surrogateMin = 0xD800
+	surrogateMax = 0xDFFF
+)
+
+var practicalMax = maxRune - (surrogateMax - surrogateMin)
 
 func randRune() (result rune) {
-	wide := rand.Int()%8 == 0
-	if wide {
-		result = rune(rand.Uint32())<<32 + rune(rand.Uint32())
-	} else {
-		result = rune(rand.Uint32())
+	result = rune(rand.Intn(practicalMax))
+	if surrogateMin <= result && result <= surrogateMax {
+		result += (surrogateMax - surrogateMin)
 	}
-	for !utf8.ValidRune(result) {
-		misses++
-		if wide {
-			result = rune(rand.Uint32())<<32 + rune(rand.Uint32())
-		} else {
-			result = rune(rand.Uint32())
-		}
-	}
-	hits++
 	return
 }
 
@@ -145,14 +139,15 @@ func Test_RandomCodePoints(t *testing.T) {
 	n := 100000
 	randomStrings := make([]string, n)
 	for i := 0; i < n; i++ {
-		buf := make([]rune, 1)
+		buf := make([]rune, 3)
 		buf[0] = randRune()
+		buf[1] = randRune()
+		buf[2] = randRune()
 		if !utf8.ValidString(string(buf)) {
 			t.Fatalf("Unable to create valid UTF8 string: %#v", string(buf))
 		}
 		randomStrings[i] = string(buf)
-		fmt.Printf("\rGenerated %v random and valid UTF8 code points ", i)
 	}
-	fmt.Printf("\nFound %v/%v valid code points (on average %v of the possible runes are valid code points)\n", hits, hits+misses, float64(hits)/float64(hits+misses))
+	fmt.Printf("Generated %v random and valid 3 char UTF8 strings\n", n)
 	testStrings(t, randomStrings)
 }
