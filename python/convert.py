@@ -3,13 +3,16 @@ import json
 import logging
 import sys
 import codecs
+import os
 
 sys.stdout = codecs.getwriter("utf-8")(sys.stdout)
 
 for line in sys.stdin.read().split("\n")[:-1]:
 	try:
-		sys.stdout.write(nodeprep.prepare(unicode(line.strip(), "utf-8")))
-		sys.stdout.write("\n")
+		a = unicode(line.strip(), "utf-8")
+		try:
+			print nodeprep.prepare(a)
+		except UnicodeError as e:
+			print "ILLEGAL:unable to prepare:" + str(e)	
 	except UnicodeError as e:
-		print "ILLEGAL"
-	
+		print "ILLEGAL:unable to decode:" + str(e)

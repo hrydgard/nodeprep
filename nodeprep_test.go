@@ -67,8 +67,13 @@ func pythonNodeprep(s []string) (result []string, legal []bool, err error) {
 	}
 	result = make([]string, len(s))
 	legal = make([]bool, len(s))
-	for i, prepped := range strings.Split(string(combined), "\n") {
-		if prepped != "ILLEGAL" {
+	outputs := strings.Split(string(combined), "\n")
+	if len(outputs) != len(s) {
+		err = fmt.Errorf("Was asked to python nodeprep %v strings, but got only %v strings back:\n%s", len(s), len(outputs), combined)
+		return
+	}
+	for i, prepped := range outputs {
+		if !strings.Contains(prepped, "ILLEGAL") {
 			legal[i] = true
 			result[i] = prepped
 		}
@@ -107,6 +112,11 @@ func testStrings(t *testing.T, strings []string) {
 		t.Fatalf("%v", err)
 	}
 	defer bad.Close()
+	good, err := os.Create("goodpreps")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	defer good.Close()
 	for i, s := range strings {
 		goPrep, err := Nodeprep(s)
 		if err == nil {
@@ -119,6 +129,7 @@ func testStrings(t *testing.T, strings []string) {
 				fmt.Fprintln(bad, strings[i])
 				errs++
 			} else {
+				fmt.Fprintln(good, strings[i])
 				correct++
 			}
 		} else {
@@ -130,11 +141,11 @@ func testStrings(t *testing.T, strings []string) {
 		}
 	}
 	if errs > 0 {
-		t.Errorf("%v/%v strings badly encoded (but %v non zero strings correctly encoded :)", errs, len(strings), correct)
+		t.Errorf("%v/%v strings badly encoded (but %v valid strings correctly encoded :)", errs, len(strings), correct)
 	}
 }
 
-func Test_RandomCodePoints(t *testing.T) {
+func Test_RandomStrings(t *testing.T) {
 	n := 100000
 	randomStrings := make([]string, n)
 	for i := 0; i < n; i++ {
